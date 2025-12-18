@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Image Processor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body>
+
+<div class="page">
+    <div class="sidebar">
+        <h2><i class="fas fa-magic"></i> Processing Tools</h2>
+        <div class="tools-grid" id="toolsGrid">
+            <button class="tool-btn active" data-op="grayscale"><i class="fas fa-adjust"></i><span>Grayscale</span></button>
+            <button class="tool-btn" data-op="hist"><i class="fas fa-chart-bar"></i><span>Histogram EQ</span></button>
+            <button class="tool-btn" data-op="blur"><i class="fas fa-water"></i><span>Gaussian Blur</span></button>
+            <button class="tool-btn" data-op="canny"><i class="fas fa-border-all"></i><span>Canny Edges</span></button>
+            <button class="tool-btn" data-op="sharpen"><i class="fas fa-gem"></i><span>Sharpen</span></button>
+            <button class="tool-btn" data-op="threshold"><i class="fas fa-cut"></i><span>Binary Threshold</span></button>
+            <button class="tool-btn" data-op="cartoon"><i class="fas fa-palette"></i><span>Cartoon Effect</span></button>
+            <button class="tool-btn" data-op="rotate"><i class="fas fa-sync-alt"></i><span>Rotate</span></button>
+            <button class="tool-btn" data-op="resize"><i class="fas fa-expand-arrows-alt"></i><span>Resize</span></button>
+            <button class="tool-btn" data-op="invert"><i class="fas fa-exclamation-circle"></i><span>Invert Colors</span></button>
+        </div>
+
+        <div id="paramsContainer" class="params-hidden">
+            <h3><i class="fas fa-sliders-h"></i> Parameters</h3>
+            <div id="paramsForm"></div>
+        </div>
+
+        <button id="processBtn" class="big-process-btn" disabled>
+            <i class="fas fa-play"></i> Process Image (Enter ⏎)
+        </button>
+    </div>
+
+    <div class="main-content">
+        <div class="card">
+            <h1>Professional Image Processing System</h1>
+            <p class="subtitle">Upload • Analyze • Transform • Download</p>
+
+            <label class="file-upload">
+                <input type="file" accept="image/*" id="imageInput">
+                <span id="uploadText"><i class="fas fa-cloud-upload-alt"></i> Choose Image</span>
+            </label>
+
+            <div id="previewContainer" class="preview-hidden">
+                <img id="imagePreview" src="" alt="Preview">
+                <span class="remove-btn" id="removeBtn">×</span>
+            </div>
+
+            <div id="propertiesContainer" class="properties-hidden">
+                <h3><i class="fas fa-info-circle"></i> Image Properties</h3>
+                <ul id="propertiesList"></ul>
+            </div>
+
+            <div id="resultsContainer" class="results-hidden">
+                <div class="results-grid">
+                    <div class="image-box">
+                        <h3>Original</h3>
+                        <img id="originalImg" src="" alt="Original">
+                        <a id="downloadOriginal" href="#" download>
+                            <button class="download-btn original-download"><i class="fas fa-download"></i> Download</button>
+                        </a>
+                    </div>
+                    <div class="image-box">
+                        <h3>Processed</h3>
+                        <img id="processedImg" src="" alt="Processed">
+                        <a id="downloadProcessed" href="#" download>
+                            <button class="download-btn result-download"><i class="fas fa-download"></i> Download Result</button>
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div id="loadingSpinner" class="loading-hidden">
+                <i class="fas fa-spinner fa-spin"></i>
+                <span>Processing your image...</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentOriginal = null;
+let selectedOperation = 'grayscale';
+let params = {};
+
+const operationParams = {
+    blur: [{name: 'kernel_size', label: 'Kernel Size', min: 1, max: 51, step: 2, default: 15}],
+    canny: [
+        {name: 'low_threshold', label: 'Low Threshold', min: 0, max: 255, step: 1, default: 100},
+        {name: 'high_threshold', label: 'High Threshold', min: 0, max: 255, step: 1, default: 200}
+    ],
+    sharpen: [{name: 'intensity', label: 'Intensity', min: 0, max: 5, step: 0.1, default: 1}],
+    threshold: [{name: 'thresh_value', label: 'Threshold Value', min: 0, max: 255, step: 1, default: 127}],
+    cartoon: [{name: 'bilateral_d', label: 'Bilateral Diameter', min: 1, max: 20, step: 1, default: 9}],
+    rotate: [{name: 'angle', label: 'Angle (°)', min: -180, max: 180, step: 1, default: 90}],
+    resize: [{name: 'scale', label: 'Scale (%)', min: 10, max: 200, step: 1, default: 50}],
+};
+
+function showParams(op) {
+    const container = document.getElementById('paramsContainer');
+    const form = document.getElementById('paramsForm');
+    form.innerHTML = '';
+    params = {};
+    const defs = operationParams[op] || [];
+    if (defs.length > 0) {
+        container.classList.remove('params-hidden');
+        defs.forEach(def => {
+            const div = document.createElement('div');
+            div.className = 'param-item';
+            div.innerHTML = `
+                <label>${def.label}</label>
+                <input type="range" min="${def.min}" max="${def.max}" step="${def.step}" value="${def.default}">
+                <span class="param-value">${def.default}</span>
+            `;
+            const input = div.querySelector('input');
+            input.addEventListener('input', e => {
+                const val = parseFloat(e.target.value);
+                params[def.name] = val;
+                div.querySelector('.param-value').textContent = val;
+                if (currentOriginal) processImage();
+            });
+            params[def.name] = def.default;
+            form.appendChild(div);
+        });
+    } else {
+        container.classList.add('params-hidden');
+    }
+}
+
+document.querySelectorAll('.tool-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        selectedOperation = btn.dataset.op;
+        showParams(selectedOperation);
+        if (currentOriginal) processImage();
+    });
+});
+
+document.getElementById('imageInput').addEventListener('change', async function() {
+    const file = this.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('image', file);
+    showLoading(true);
+
+    try {
+        const res = await fetch('/process', {method: 'POST', body: formData});
+        const data = await res.json();
+        if (data.error) { alert(data.error); return; }
+
+        document.getElementById('imagePreview').src = data.original_image;
+        document.getElementById('previewContainer').classList.remove('preview-hidden');
+        document.getElementById('uploadText').innerHTML = `<i class="fas fa-image"></i> ${file.name}`;
+
+        const props = data.properties;
+        document.getElementById('propertiesList').innerHTML = `
+            <li><strong>Dimensions:</strong> ${props.width} × ${props.height} px</li>
+            <li><strong>Channels:</strong> ${props.channels}</li>
+            <li><strong>Size:</strong> ${props.size_kb} KB</li>
+            <li><strong>Format:</strong> ${props.format}</li>
+        `;
+        document.getElementById('propertiesContainer').classList.remove('properties-hidden');
+
+        currentOriginal = data.original_image;
+        document.getElementById('originalImg').src = currentOriginal;
+        document.getElementById('downloadOriginal').href = `/download/${currentOriginal.split('/').pop()}`;
+        document.getElementById('resultsContainer').classList.remove('results-hidden');
+        document.getElementById('processBtn').disabled = false;
+
+        showParams(selectedOperation);
+        processImage();
+    } catch (e) {
+        alert('فشل في رفع الصورة');
+    } finally {
+        showLoading(false);
+    }
+});
+
+async function processImage() {
+    if (!currentOriginal) return;
+    showLoading(true);
+
+    try {
+        const res = await fetch('/process', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({operation: selectedOperation, original_image: currentOriginal, params})
+        });
+        const data = await res.json();
+        if (data.error) { alert(data.error); return; }
+
+        const url = data.result_image + '?t=' + Date.now();
+        document.getElementById('processedImg').src = url;
+        document.getElementById('downloadProcessed').href = `/download/${data.result_image.split('/').pop()}`;
+    } catch (e) {
+        alert('فشل في المعالجة');
+    } finally {
+        showLoading(false);
+    }
+}
+
+document.getElementById('processBtn').addEventListener('click', processImage);
+
+document.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && currentOriginal && !document.getElementById('processBtn').disabled) {
+        e.preventDefault();
+        processImage();
+    }
+});
+
+document.getElementById('removeBtn').addEventListener('click', () => {
+    document.getElementById('imageInput').value = '';
+    ['previewContainer','propertiesContainer','resultsContainer'].forEach(id => {
+        document.getElementById(id).classList.add('preview-hidden' in document.getElementById(id).classList ? 'preview-hidden' : 'properties-hidden');
+    });
+    document.getElementById('uploadText').innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Choose Image';
+    document.getElementById('processBtn').disabled = true;
+    currentOriginal = null;
+});
+
+function showLoading(show) {
+    const spinner = document.getElementById('loadingSpinner');
+    show ? spinner.classList.remove('loading-hidden') : spinner.classList.add('loading-hidden');
+}
+</script>
+
+</body>
+</html>
